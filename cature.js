@@ -1,0 +1,279 @@
+// TODO WarnIn
+function PrintStackTrace(msg, trace) {
+	try {
+		var msgStack = ['ERROR: ' + msg];
+		if (trace && trace.length) {
+			msgStack.push('TRACE:');
+			trace.forEach(function(t) {
+				msgStack.push(' -> ' + (t.file || t.sourceURL) + ': ' + t.line + (t.function ? ' (in function ' + t.function + ')' : ''));
+			});
+		}
+		ErrorOut(msgStack.join('\n'));
+	} catch(e) {
+		phantom.exit(-11);
+	}
+}
+phantom.onError = PrintStackTrace;
+
+var page = require('webpage').create();
+
+//page.onResourceReceived = function(response) {
+//	    if (response.stage !== "end") return;
+//		    console.log('Response (#' + response.id + ', stage "' + response.stage + '"): ' + response.url);
+//};
+//page.onResourceRequested = function(requestData, networkRequest) {
+//	    console.log('Request (#' + requestData.id + '): ' + requestData.url);
+//};
+//page.onUrlChanged = function(targetUrl) {
+//	    console.log('New URL: ' + targetUrl);
+//};
+//page.onLoadFinished = function(status) {
+//	    console.log('Load Finished: ' + status);
+//		if(status == 'fail')
+//			page.render('load-fail.png');
+//};
+//page.onLoadStarted = function() {
+//	    console.log('Load Started');
+//};
+//page.onNavigationRequested = function(url, type, willNavigate, main) {
+//	    console.log('Trying to navigate to: ' + url);
+//};
+
+var CS = {};
+function Start() {
+	var fs = require('fs');
+	setTimeout(function() {
+		page.render("timeout.png");
+		ErrorOut("Overall timeout!");
+	}, 10 * 60 * 1000);
+	CS = JSON.parse(fs.read('settings'));
+	page.viewportSize = { width: 1920, height: 1500 };
+	phantom.cookiesEnabled = true;
+	page.settings.userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
+	Log("Starting…");
+	page.open('http://www.steamgifts.com', Checked(OnMainOpen));
+}
+
+function OnMainOpen(status) {
+	if(IsSteamGiftsLoggedIn())
+		OnSteamgiftsLogin();
+	else {
+		Log("Main opened, logging in…");
+		page.render('steamgifts-prelogin.png');
+		logins = FMTag('a', 'href', 'login$');
+		if(!logins.length)
+			ErrorOut("Could not find login element.");
+		page.open(logins[0], Checked(OnLoginOpen));
+	}
+}
+
+function OnLoginOpen(status) {
+	if(IsSteamGifts())
+		return OnSteamgiftsLogin();
+	Log("Login opened.");
+	page.evaluate(function(nm, pw) {
+		document.getElementById('steamAccountName').value = nm;
+		document.getElementById('steamPassword').value = atob(atob(atob(atob(pw)))); // No, this is not secure or anything. But I'm reluctant to put it in plain text.
+	}, CS.SNM, CS.SPW);
+	page.render('steam-login.png');
+	var olf = page.onLoadFinished;
+	page.onLoadFinished = function(status) {
+		exec(olf,status);
+		if(IsSteamGifts()) {
+			page.onLoadFinished = olf;
+			OnSteamgiftsLogin();
+		}
+	};
+	page.evaluate(function() {
+		document.getElementById('imageLogin').click();
+	});
+}
+
+function OnSteamgiftsLogin() {
+	Log("Logged in.");
+	page.render('steamgifts.png');
+	var giveaways = EnterableGiveaways();
+	if(giveaways.length == 0)
+		ErrorOut("No enterable giveaways found.");
+	Log("" + giveaways.length + " giveaways.");
+	giveaways.sort(function(a,b) { return 0.5 - Math.random(); });
+	Log(JSON.stringify(giveaways, undefined, 4));
+	var nextact;
+	nextact = function() {
+		giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * 100  <= AvailablePoints(); });
+		Log("Having " + AvailablePoints() + "P, " + giveaways.length + " options left.");
+		if(!giveaways.length)
+			Finished();
+		var next = giveaways.pop();
+		//if(AvailablePoints() < 100 && !next.w)
+		//	Finished();
+		Log("Loading " + next.u);
+		page.open(next.u, Checked(fbind2(OnGiveawayLoaded, nextact)));
+	}
+	nextact();
+}
+
+function OnGiveawayLoaded(nextact) {
+	var grender = function() { 
+		page.render('steamgifts-giveaway-' + GiveawayState() + '-' + page.url.match(RegExp('giveaway/(.*)$'))[1].split('/').join('-') + '.png');
+	}
+	Log("Giveaway: " + page.title);
+	grender();
+	if(GiveawayState() != 'open')
+		return nextact();
+	page.evaluate(function() {
+		var b = document.getElementsByClassName("sidebar__entry-insert");
+		if(b.length != 1)
+			console.log("" + b.length + " entry buttons. (1 expected)");
+		if(b.length)
+			b[0].click();
+	});
+	var i = 0;
+	var invl = setInterval(function() {
+		if(i ++> 400 || GiveawayState() == 'entered') {
+			grender();
+			clearInterval(invl);
+			nextact();
+		}
+	}, 100);
+}
+
+function AvailablePoints() {
+	if(!IsSteamGifts()) return 300;
+	return page.evaluate(function() { return parseInt(document.getElementsByClassName('nav__points')[0].innerHTML); });
+}
+
+function IsSteamGifts() {
+	return page.url.match(RegExp('^http://[^/]*steamgifts'));
+}
+
+function IsSteamGiftsLoggedIn() {
+	if(!IsSteamGifts())
+		return false;	
+	var v = FMTag('a', 'href', 'logout$');
+	return !!v.length;
+}
+
+function EnterableGiveaways() {
+	var gs = page.evaluate(function() {
+		return Array.prototype.map.call(document.getElementsByClassName('giveaway__row-outer-wrap'), function(g) {
+			try {
+				if(g.getElementsByClassName('giveaway__row-inner-wrap')[0].classList.contains('is-faded'))
+					return undefined;
+				var l = g.getElementsByClassName('giveaway__heading__name')[0];
+				if(!l.href.match(RegExp('^http://[^/]*/giveaway/')))
+					throw "Structures unexpected: Giveaway is not a giveaway";
+				var ent = parseInt(g.getElementsByClassName('giveaway__links')[0].innerHTML.match(/([0-9,]*) entries/)[1].split(',').join(''));
+				var copies = 1, points = undefined;
+				Array.prototype.map.call(g.getElementsByClassName('giveaway__heading__thin'), function(h) {
+					var mp = g.innerHTML.match(/\(([0-9]+)(P| points)\)/);
+					if(mp)
+						points = parseInt(mp[1]);	
+					var mc = g.innerHTML.match(/\(([0-9]+) copies\)/);
+					if(mc)
+						copies = parseInt(mc[1]);
+				});
+				if(points === undefined)
+					throw "Structures unexpected: Giveaway is not a giveaway";
+				return { u: l.href, c: copies, p: points, e: ent };
+			} catch(e) {
+				console.log("Scraping giveaways: " + e.message);
+				return undefined;
+			}
+		}).filter(function(a) { return a != undefined; });
+	}).uniqueOn(function(e) { return e.u; });
+	for(var i = 0; i < gs.length; ++i)
+		gs[i].w = (CS.Fav.reduce(function(r, c) { return r || gs[i].u.match(c); }, false)) ? 1 : 0;
+	return gs;
+}
+
+function GiveawayState() {
+	return page.evaluate(function() {
+		if(document.getElementsByClassName('sidebar__error').length)
+			return 'closed';
+		var isvis = function(c) {
+			return !document.getElementsByClassName(c)[0].classList.contains('is-hidden');
+		}
+		var e = isvis('sidebar__entry-insert'),
+		    d = isvis('sidebar__entry-delete'),
+		    l = isvis('sidebar__entry-loading');
+		if(e && d || e && l || d && l)
+			throw "Structures unexpected: Can not determine giveaway status.";
+		if(e) return 'open';
+		if(d) return 'entered';
+		if(l) return 'loading';
+	});
+}
+
+function ErrorOut(msg) {
+	console.log(msg);
+	debugger;
+	phantom.exit(-1);
+}
+
+var HasWarned = false;
+function WarnIn(msg) {
+	console.log(msg);
+	HasWarned = true;
+}
+
+function Finished() {
+	phantom.exit(HasWarned ? 1 : 0);
+}
+
+function Log(msg) {
+	console.log(msg);
+}
+
+function Checked(f) {
+	return function(status) {
+		if (status !== 'success') 
+			ErrorOut('Unable to load url: ' + page.url);
+		try {
+			f(status);
+		} catch(err) {
+			PrintStackTrace(err.message);
+		}
+	}
+}
+
+function FMTag(tag, p, m) {
+	var r = page.evaluate(function(tag, p, m) {
+		return Array.prototype.map.call(document.getElementsByTagName(tag)
+			,function(e) { return p.split(".").reduce(function(d, a) { return d[a]; }, e) })
+			.filter(function(s) { return s.match(RegExp(m)); });
+	}, tag, p, m);
+	return r;
+}
+
+Array.prototype.uniqueOn = function(f) {
+	var u = {}, a = [];
+	for(var i = 0; i < this.length; ++i) {
+		var e = this[i];
+		var p = f(e);
+		if(u.p)
+			continue;
+		a.push(e);
+		u[e] = true;
+	}
+	return a;
+}
+
+function fbind2(f, a) {
+	return function(b) {
+		f(a,b);
+	}
+}
+
+function exec(f,a,b,c,d) {
+	if(typeof(f) == 'function')
+		return f(a,b,c,d);
+	if(typeof(f) == 'string')
+		return eval(f);
+}
+
+page.onConsoleMessage = function(msg) {
+	Log(msg);
+};
+
+Start();
