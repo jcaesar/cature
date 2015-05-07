@@ -18,25 +18,25 @@ phantom.onError = PrintStackTrace;
 var page = require('webpage').create();
 
 //page.onResourceReceived = function(response) {
-//	    if (response.stage !== "end") return;
-//		    console.log('Response (#' + response.id + ', stage "' + response.stage + '"): ' + response.url);
+//	if (response.stage !== "end") return;
+//		console.log('Response (#' + response.id + ', stage "' + response.stage + '"): ' + response.url);
 //};
 //page.onResourceRequested = function(requestData, networkRequest) {
-//	    console.log('Request (#' + requestData.id + '): ' + requestData.url);
+//	console.log('Request (#' + requestData.id + '): ' + requestData.url);
 //};
 //page.onUrlChanged = function(targetUrl) {
-//	    console.log('New URL: ' + targetUrl);
+//	console.log('New URL: ' + targetUrl);
 //};
 //page.onLoadFinished = function(status) {
-//	    console.log('Load Finished: ' + status);
-//		if(status == 'fail')
-//			page.render('load-fail.png');
+//	console.log('Load Finished: ' + status);
+//	if(status == 'fail')
+//		page.render('load-fail.png');
 //};
 //page.onLoadStarted = function() {
-//	    console.log('Load Started');
+//	console.log('Load Started');
 //};
 //page.onNavigationRequested = function(url, type, willNavigate, main) {
-//	    console.log('Trying to navigate to: ' + url);
+//	console.log('Trying to navigate to: ' + url);
 //};
 
 var CS = {};
@@ -51,7 +51,7 @@ function Start() {
 	phantom.cookiesEnabled = true;
 	page.settings.userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 	Log("Starting…");
-	page.open('http://www.steamgifts.com', Checked(OnMainOpen));
+	Open('http://www.steamgifts.com', OnMainOpen);
 }
 
 function OnMainOpen(status) {
@@ -63,7 +63,7 @@ function OnMainOpen(status) {
 		logins = FMTag('a', 'href', 'login$');
 		if(!logins.length)
 			ErrorOut("Could not find login element.");
-		page.open(logins[0], Checked(OnLoginOpen));
+		Open(logins[0], OnLoginOpen);
 	}
 }
 
@@ -97,7 +97,7 @@ function OnSteamgiftsLogin() {
 		ErrorOut("No enterable giveaways found.");
 	Log("" + giveaways.length + " giveaways.");
 	giveaways.sort(function(a,b) { return 0.5 - Math.random(); });
-	Log(JSON.stringify(giveaways, undefined, 4));
+	//Log(JSON.stringify(giveaways, undefined, 4));
 	var nextact;
 	nextact = function() {
 		giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * 100  <= AvailablePoints(); });
@@ -108,7 +108,7 @@ function OnSteamgiftsLogin() {
 		//if(AvailablePoints() < 100 && !next.w)
 		//	Finished();
 		Log("Loading " + next.u);
-		page.open(next.u, Checked(fbind2(OnGiveawayLoaded, nextact)));
+		Open(next.u, fbind2(OnGiveawayLoaded, nextact));
 	}
 	nextact();
 }
@@ -225,16 +225,36 @@ function Log(msg) {
 	console.log(msg);
 }
 
-function Checked(f) {
-	return function(status) {
-		if (status !== 'success') 
-			ErrorOut('Unable to load url: ' + page.url);
-		try {
-			f(status);
-		} catch(err) {
-			PrintStackTrace(err.message);
-		}
+
+page.onResourceError = function(resourceError) {
+	page.reason = resourceError.errorString;
+	page.reason_url = resourceError.url;
+};
+
+function Open(uri, action) {
+	var retry = 3;
+	var tryl;
+	tryl = function(w) {
+		setTimeout(function() {
+			page.open(uri, function(status) {
+				retry--;
+				if (status !== 'success') {
+					WarnIn('Unable to load url: ' + page.reason_url + ' - ' + page.reason + ' Retrys left: ' + retry);
+					if(retry > 0)
+						tryl(5678);
+					else
+						ErrorOut("Giving up.");
+				} else {
+					try {
+						action(status);
+					} catch(err) {
+						PrintStackTrace(err.message);
+					}
+				}
+			});
+		}, w);
 	}
+	tryl(1500);
 }
 
 function FMTag(tag, p, m) {
