@@ -92,25 +92,33 @@ function OnLoginOpen(status) {
 function OnSteamgiftsLogin() {
 	Log("Logged in.");
 	page.render('steamgifts.png');
-	var giveaways = EnterableGiveaways();
-	if(giveaways.length == 0)
-		ErrorOut("No enterable giveaways found.");
+	return GrepCycle(2, []);
+}
+
+function GrepCycle(nextpage, giveaways) {
+	giveaways = EnterableGiveaways(giveaways);
 	Log("" + giveaways.length + " giveaways.");
-	giveaways.sort(function(a,b) { return 0.5 - Math.random(); });
-	//Log(JSON.stringify(giveaways, undefined, 4));
-	var nextact;
-	nextact = function() {
-		giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * 100  <= AvailablePoints(); });
-		Log("Having " + AvailablePoints() + "P, " + giveaways.length + " options left.");
-		if(!giveaways.length)
-			Finished();
-		var next = giveaways.pop();
-		//if(AvailablePoints() < 100 && !next.w)
-		//	Finished();
-		Log("Loading " + next.u);
-		Open(next.u, fbind2(OnGiveawayLoaded, nextact));
+	if(giveaways.length > 150 || nextpage > 10) {
+		if(giveaways.length == 0)
+			ErrorOut("No enterable giveaways found.");
+		giveaways.sort(function(a,b) { return 0.5 - Math.random(); });
+		//Log(JSON.stringify(giveaways, undefined, 4));
+		var nextact;
+		nextact = function() {
+			giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * 100  <= AvailablePoints(); });
+			Log("Having " + AvailablePoints() + "P, " + giveaways.length + " options left.");
+			if(!giveaways.length)
+				Finished();
+			var next = giveaways.pop();
+			//if(AvailablePoints() < 100 && !next.w)
+			//	Finished();
+			Log("Loading " + next.u);
+			Open(next.u, fbind2(OnGiveawayLoaded, nextact));
+		}
+		nextact();
+	} else {
+		Open('http://www.steamgifts.com/giveaways/search?page=' + page, fbind3(GrepCycle, nextpage + 1, giveaways));
 	}
-	nextact();
 }
 
 function OnGiveawayLoaded(nextact) {
@@ -154,7 +162,7 @@ function IsSteamGiftsLoggedIn() {
 	return !!v.length;
 }
 
-function EnterableGiveaways() {
+function EnterableGiveaways(known) {
 	var gs = page.evaluate(function() {
 		return Array.prototype.map.call(document.getElementsByClassName('giveaway__row-outer-wrap'), function(g) {
 			try {
@@ -181,9 +189,10 @@ function EnterableGiveaways() {
 				return undefined;
 			}
 		}).filter(function(a) { return a != undefined; });
-	}).uniqueOn(function(e) { return e.u; });
+	}).concat(known).uniqueOn(function(e) { return e.u; });
 	for(var i = 0; i < gs.length; ++i)
-		gs[i].w = (CS.Fav.reduce(function(r, c) { return r || gs[i].u.match(c); }, false)) ? 1 : 0;
+		if(gs[i].w == undefined)
+			gs[i].w = (CS.Fav.reduce(function(r, c) { return r || gs[i].u.match(c); }, false)) ? 1 : 0;
 	return gs;
 }
 
@@ -282,6 +291,11 @@ Array.prototype.uniqueOn = function(f) {
 function fbind2(f, a) {
 	return function(b) {
 		f(a,b);
+	}
+}
+function fbind3(f, a, b) {
+	return function(c) {
+		f(a,b,c);
 	}
 }
 
