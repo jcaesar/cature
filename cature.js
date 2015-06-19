@@ -113,11 +113,11 @@ function GrepCycle(nextpage, giveaways) {
 			//if(AvailablePoints() < 100 && !next.w)
 			//	Finished();
 			Log("Loading " + next.u);
-			Open(next.u, fbind2(OnGiveawayLoaded, nextact));
+			Open(next.u, OnGiveawayLoaded.bind(undefined, nextact));
 		}
 		nextact();
 	} else {
-		Open('http://www.steamgifts.com/giveaways/search?page=' + page, fbind3(GrepCycle, nextpage + 1, giveaways));
+		Open('http://www.steamgifts.com/giveaways/search?page=' + page, GrepCycle.bind(undefined , nextpage + 1, giveaways));
 	}
 }
 
@@ -286,17 +286,6 @@ Array.prototype.uniqueOn = function(f) {
 		u[e] = true;
 	}
 	return a;
-}
-
-function fbind2(f, a) {
-	return function(b) {
-		f(a,b);
-	}
-}
-function fbind3(f, a, b) {
-	return function(c) {
-		f(a,b,c);
-	}
 }
 
 function exec(f,a,b,c,d) {
