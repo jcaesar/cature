@@ -76,12 +76,21 @@ function OnLoginOpen(status) {
 		document.getElementById('steamPassword').value = atob(atob(atob(atob(pw)))); // No, this is not secure or anything. But I'm reluctant to put it in plain text.
 	}, CS.SNM, CS.SPW);
 	page.render('steam-login.png');
+	var fac2ivl = setInterval(function() {
+		if(page.evaluate(function(){ return document.getElementById('authcode') != null; })) {
+			WarnIn("Authcode requested, can not continue");
+			Finished();
+		}
+	}, 500);
 	var olf = page.onLoadFinished;
 	page.onLoadFinished = function(status) {
+		clearInterval(fac2ivl);
 		exec(olf,status);
 		if(IsSteamGifts()) {
 			page.onLoadFinished = olf;
 			OnSteamgiftsLogin();
+		} else {
+			ErrorOut("Login button did not take us to the steamgifts page.");
 		}
 	};
 	page.evaluate(function() {
