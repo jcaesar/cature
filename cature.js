@@ -77,20 +77,49 @@ function OnLoginOpen(status) {
 	}, CS.SNM, CS.SPW);
 	page.render('steam-login.png');
 	var fac2ivl = setInterval(function() {
-		if(page.evaluate(function(){ return document.getElementById('authcode') != null; })) {
-			WarnIn("Authcode requested, can not continue");
-			Finished();
+		if(page.evaluate(function() { return document.getElementById('authcode') != null; })) {
+			WarnIn("Authcode requested, can not continue.");
+			var system = require('system');
+			system.stdout.write('Enter Steam Authcode: ');
+			system.stdout.flush();
+			var ac = system.stdin.readLine();
+			if(ac.trim() == '')
+				ErrorOut("Empty authcode given, aborting.");
+			else {
+				page.evaluate(function(ac) {
+					document.getElementById('authcode').value = ac;
+					document.getElementById('friendlyname').value = 'phantomjs / steamgifts / cature.js';
+					var ev = document.createEvent("MouseEvent");
+					ev.initMouseEvent(
+						"click",
+						true /* bubble */, true /* cancelable */,
+						window, null,
+						0, 0, 0, 0, /* coordinates */
+						false, false, false, false, /* modifier keys */
+						0 /*left*/, null
+					);
+					document.querySelector('#auth_buttonset_entercode .leftbtn').dispatchEvent(ev);
+				}, ac);
+				Log("Authcode sent, abort manually if this takes too long.");
+			}
 		}
+		clearInterval(fac2ivl);
 	}, 500);
 	var olf = page.onLoadFinished;
 	page.onLoadFinished = function(status) {
+		// bit hard to say when the process finishes… just wait for timeout.
 		clearInterval(fac2ivl);
 		exec(olf,status);
 		if(IsSteamGifts()) {
 			page.onLoadFinished = olf;
 			OnSteamgiftsLogin();
 		} else {
-			ErrorOut("Login button did not take us to the steamgifts page.");
+			var wrong = function() {
+				var icc = document.querySelector('#auth_message_incorrectcode');
+				return !(icc && icc.style.display == 'none');
+			};
+			if(wrong)
+				ErrorOut("Wrong authcode.");
 		}
 	};
 	page.evaluate(function() {
