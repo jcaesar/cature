@@ -253,14 +253,14 @@ function GiveawayState() {
 }
 
 function ErrorOut(msg) {
-	console.log(msg);
+	Log('ERROR: ' + msg);
 	debugger;
 	phantom.exit(-1);
 }
 
 var HasWarned = false;
 function WarnIn(msg) {
-	console.log(msg);
+	Log('WARNING: ' + msg);
 	HasWarned = true;
 }
 
@@ -269,7 +269,10 @@ function Finished() {
 }
 
 function Log(msg) {
-	console.log(msg);
+	var d = new Date();
+	console.log('['
+		+ zeroExtend(d.getHours(), 2) + ':' + zeroExtend(d.getMinutes(), 2) + ':' + zeroExtend(d.getSeconds(), 2)
+		+ '] ' + msg);
 }
 
 
@@ -331,6 +334,12 @@ function exec(f,a,b,c,d) {
 		return f(a,b,c,d);
 	if(typeof(f) == 'string')
 		return eval(f);
+}
+
+function zeroExtend(n, l) {
+	// I feel like js is stoopid…
+	return (Array(l).join('0') + n).slice(-l);
+	// not taking care of floats of negatives…
 }
 
 page.onConsoleMessage = function(msg) {
