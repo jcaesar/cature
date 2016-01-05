@@ -1,5 +1,8 @@
 // TODO WarnIn
+var PostExit = false;
 function PrintStackTrace(msg, trace) {
+	if(PostExit)
+		return; // nvm.
 	try {
 		var msgStack = ['ERROR: ' + msg];
 		if (trace && trace.length) {
@@ -10,7 +13,7 @@ function PrintStackTrace(msg, trace) {
 		}
 		ErrorOut(msgStack.join('\n'));
 	} catch(e) {
-		phantom.exit(-11);
+		Exit(-11);
 	}
 }
 phantom.onError = PrintStackTrace;
@@ -223,7 +226,7 @@ function EnterableGiveaways(known) {
 					throw "Structures unexpected: Giveaway is not a giveaway";
 				return { u: l.href, c: copies, p: points, e: ent };
 			} catch(e) {
-				console.log("Scraping giveaways: " + e.message);
+				WarnIn("Error scraping giveaways: " + e.message);
 				return undefined;
 			}
 		}).filter(function(a) { return a != undefined; });
@@ -255,7 +258,7 @@ function GiveawayState() {
 function ErrorOut(msg) {
 	Log('ERROR: ' + msg);
 	debugger;
-	phantom.exit(-1);
+	Exit(-1);
 }
 
 var HasWarned = false;
@@ -265,7 +268,13 @@ function WarnIn(msg) {
 }
 
 function Finished() {
-	phantom.exit(HasWarned ? 1 : 0);
+	Log("Finished.");
+	Exit(HasWarned ? 1 : 0);
+}
+
+function Exit(code) {
+	PostExit = true;
+	phantom.exit(code);
 }
 
 function Log(msg) {
