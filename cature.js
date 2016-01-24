@@ -352,7 +352,7 @@ function zeroExtend(n, l) {
 }
 
 page.onConsoleMessage = function(msg) {
-	Log(msg);
+	Log('PAGE: ' + msg);
 };
 
 Start();
