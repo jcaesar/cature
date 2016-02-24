@@ -1,8 +1,7 @@
 cature.js -- phantomjs steamgifts.com bot
 
 Script for http://steamgifts.com - enters giveaways on the front page.
-I hacked the whole thing together in two days, and I don't really care about extending its features. So you'll have to deactivate Steam Account protection.
-If you feel like giving it the ability to pass the 2 factor authorization or other ways to select giveaways, send me a patch.
+I hacked the whole thing together in two days, so it is not exactly a beauty. It has been extended to be able to walk through two factor authorization.
 
 The script wants a file named settings in the directory it is run in. Following JSON format:
 
@@ -23,4 +22,4 @@ I run it through cron, e.g.
 
 37 9-23/2 * * *	cd $HOME/cature; phantomjs --cookies-file=$HOME/cature/steamgift_cookies.txt cature.js
 
-The cookies-file is not necessary, but it will save jumping through the steam auth every time. You may even be able to craft one that takes you past two factor authorization.
+The cookies-file is not strictly-speaking necessary, but it will save going through the steam auth every time.
