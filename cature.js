@@ -4,7 +4,7 @@ function PrintStackTrace(msg, trace) {
 	if(PostExit)
 		return; // nvm.
 	try {
-		var msgStack = ['ERROR: ' + msg];
+		var msgStack = ['JS: ' + msg];
 		if (trace && trace.length) {
 			msgStack.push('TRACE:');
 			trace.forEach(function(t) {
@@ -19,6 +19,7 @@ function PrintStackTrace(msg, trace) {
 phantom.onError = PrintStackTrace;
 
 var page = require('webpage').create();
+var sys = require('system');
 
 
 /*page.onResourceReceived = function(response) {
@@ -44,6 +45,7 @@ page.onNavigationRequested = function(url, type, willNavigate, main) {
 };*/
 
 var CS = {};
+var CollectGifts;
 function Start() {
 	var fs = require('fs');
 	setTimeout(function() {
@@ -52,7 +54,28 @@ function Start() {
 		ErrorOut("Overall timeout!");
 	}, 15 * 60 * 1000);
 	CS = JSON.parse(fs.read('settings'));
-	page.viewportSize = { width: 1920, height: 1500 };
+	if (typeof CS.RegexEntry != 'object') 
+		CS.RegexEntry = [];
+	if (typeof CS.SearchStrings != 'object') 
+		CS.RegexEntry = [];
+	if (typeof CS.Fav == 'object' && CS.Fav.constructor == Array) {
+		CS.RegexEntry = CS.RegexEntry.concat(CS.Fav.map(function(s) { return s.replace(' ', '-'); }));
+		CS.SearchStrings = CS.SearchStrings.concat(CS.Fav);
+	}
+	if (typeof CS.PointLimit != 'number')
+		CS.PointLimit = 10;
+	shuffleArray(CS.SearchStrings);
+	CollectGifts = FrontpageMode;
+	for (var i = 0; i < sys.args.length; ++i)
+		if (sys.args[i].match('mode$')) {
+			switch (sys.args[i]) {
+				case 'frontpagemode': CollectGifts = FrontpageMode; break;
+				case 'searchmode': CollectGifts = SearchMode; break;
+				case 'wishlistmode': CollectGifts = WishlistMode; break;
+				default: ErrorOut("Unknown mode: " + sys.args[i]);
+			}
+		}
+	page.viewportSize = { width: 1280, height: 1500 };
 	phantom.cookiesEnabled = true;
 	page.settings.userAgent = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 	Log("Starting…");
@@ -95,10 +118,9 @@ function OnLoginOpen(status) {
 		});
 		if(needac) {
 			WarnIn("Authcode requested, can not continue.");
-			var system = require('system');
-			system.stdout.write('Enter Steam Authcode: ');
-			system.stdout.flush();
-			var ac = system.stdin.readLine();
+			sys.stdout.write('Enter Steam Authcode: ');
+			sys.stdout.flush();
+			var ac = sys.stdin.readLine();
 			if(ac.trim() == '') {
 				page.render('steam-empty-authcode.png');
 				ErrorOut("Empty authcode given, aborting.");
@@ -127,30 +149,33 @@ function OnLoginOpen(status) {
 	page.onLoadFinished = function(status) {
 		// bit hard to say when the process finishes… just wait for timeout.
 		clearInterval(fac2ivl);
-		exec(olf,status);
+		exec(olf, status);
 		if(IsSteamGifts()) {
 			page.onLoadFinished = olf;
 			OnSteamgiftsLogin();
 		} else {
-			var wrong = page.evaluate(function() {
+			var res = page.evaluate(function() {
 				var icc = document.querySelectorAll('.auth_buttonset');
-				if (icc.length == 0)
-					throw "cature.js needs updating.";
+				if (!icc || icc.length == 0)
+					return { nothing: true };
 				for(var i = 0; i < icc.length; i++) {
 					var e = icc[i];
 					if (e.style.display != 'none' && e.id.match(/incorrectcode/))
-						return e.outerHTML;
+						return { wrong: true, msg: e.outerHTML };
 				}
-				return false;
+				return { wrong: false };
 			});
+			if (ret.nothing)
+				return;
 			//require('system').stdout.write(page.evaluate(function() { return document.documentElement.innerHTML; }));
-			if(wrong) {
-				// console.log(wrong);
+			if(res.wrong) {
+				// console.log(res.msg);
 				ErrorOut("Wrong authcode.");
-			} else
+			} else {
 				page.evaluate(function() {
 					document.getElementById('success_continue_btn').click();
 				});
+			}
 		}
 	};
 	page.evaluate(function() {
@@ -162,10 +187,59 @@ function OnLoginOpen(status) {
 }
 
 function OnSteamgiftsLogin() {
-	Log("Logged in.");
+	Log("Logged in. Seeing " + AvailablePoints() + "P.");
 	page.render('steamgifts.png');
-	return GrepCycle(2, []);
+	return CollectGifts();
 }
+
+function WishlistMode() {
+	var wl = page.evaluate(function() { return Array.prototype.map.call(document.querySelectorAll('a[href*="search?type=wishlist"]'), function(e) { return e.href; }); });
+	if (wl.length == 1)
+		wl = wl[0];
+	else
+		wl = Base() + "/giveaways/search?type=wishlist";
+	Open(wl, ReapSearch.bind(undefined, " in wishlist", Finished, false));
+}
+
+function SearchMode() {
+	if (CS.SearchStrings.length < 1) {
+		Log("No more searches left.");
+		return Finished();
+	}
+	if(AvailablePoints() < CS.PointLimit)
+		return Finished();
+	/*if (!page.evaluate(function(s) {
+			var search = document.getElementsByName('search-query');
+			if (search.length != 1)
+			search = search[0];
+			search.value = s;
+			var ev = document.createEvent('KeyboardEvent');
+			ev.initKeyEvent('keydown', true, true, window, false, false, false, false, 13, 0);
+			search.dispatchEvent(ev);
+		}, CS.SearchStrings.pop()))
+		return ErrorOut("Could not locate search field.");*/
+	// I'd really like to use the serach field, but I'm too stupid.
+	var search = CS.SearchStrings.pop();
+	Open(Base() + '/giveaways/search?type=all&q=' + search, ReapSearch.bind(undefined, " for " + search, SearchMode, true));
+}
+
+function ReapSearch(search, after, f) {
+	var giveaways = EnterableGiveaways([]);
+	if (f)
+		giveaways = giveaways.filter(function(g) { return g.w; });
+	Log("Found " + giveaways.length + " giveaways" + search + ".");
+	//Log(JSON.stringify(giveaways, undefined, 4));
+	EnterAllGiveaways(giveaways.map(function(g) { return g.u; }), after);
+}
+
+function EnterAllGiveaways(gs, after) {
+	if (gs.length < 1)
+		return after();
+	var g = gs.pop();
+	Open(g, OnGiveawayLoaded.bind(undefined, EnterAllGiveaways.bind(undefined, gs, after)));
+}
+
+var FrontpageMode = function() { GrepCycle(2, []) };
 
 function GrepCycle(nextpage, giveaways) {
 	giveaways = EnterableGiveaways(giveaways);
@@ -173,11 +247,11 @@ function GrepCycle(nextpage, giveaways) {
 	if(giveaways.length > 150 || nextpage > 10) {
 		if(giveaways.length == 0)
 			ErrorOut("No enterable giveaways found.");
-		giveaways.sort(function(a,b) { return 0.5 - Math.random(); });
+		shuffleArray(giveaways);
 		//Log(JSON.stringify(giveaways, undefined, 4));
 		var nextact;
 		nextact = function() {
-			giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * 100  <= AvailablePoints(); });
+			giveaways = giveaways.filter(function(g) { return g.p - (g.w - 1) * CS.PointLimit  <= AvailablePoints(); });
 			Log("Having " + AvailablePoints() + "P, " + giveaways.length + " options left.");
 			if(!giveaways.length)
 				Finished();
@@ -266,10 +340,16 @@ function EnterableGiveaways(known) {
 				throw("Error scraping giveaways: " + e.message);
 			}
 		}).filter(function(a) { return a != undefined; });
-	}).concat(known).uniqueOn(function(e) { return e.u; });
-	for(var i = 0; i < gs.length; ++i)
+	})
+	.concat(known)
+	.uniqueOn(function(e) { return e.u; })
+	for(var i = 0; i < gs.length; ++i) {
 		if(gs[i].w == undefined)
-			gs[i].w = (CS.Fav.reduce(function(r, c) { return r || gs[i].u.match(c); }, false)) ? 1 : 0;
+			gs[i].w = (CS.RegexEntry.reduce(function(r, c) { return r || gs[i].u.match(c); }, false)) ? 1 : 0;
+		//for (var j = 0; j < CS.RegexEntry.length; j++)
+		//	Log("RX: " + CS.RegexEntry[j] + " against: " + gs[i].u + " res: " + gs[i].u.match(CS.RegexEntry[j]));
+	}
+	gs = gs.filter(function(a) { return a.w || CS.BL.reduce(function(r,c) { return r && !a.u.match(c); }, true); });
 	return gs;
 }
 
@@ -305,7 +385,7 @@ function WarnIn(msg) {
 }
 
 function Finished() {
-	Log("Finished.");
+	Log("Finished" + (IsSteamGiftsLoggedIn()? (" with " + AvailablePoints() + "P") : "") + ".");
 	Exit(HasWarned ? 1 : 0);
 }
 
@@ -394,5 +474,19 @@ function zeroExtend(n, l) {
 page.onConsoleMessage = function(msg) {
 	Log(msg);
 };
+
+function shuffleArray(array) {
+	for (var i = array.length - 1; i > 0; i--) {
+		var j = Math.floor(Math.random() * (i + 1));
+		var temp = array[i];
+		array[i] = array[j];
+		array[j] = temp;
+	}
+	return array;
+}
+
+function Base() {
+	return page.evaluate(function() { return location.protocol + '//' + location.hostname + (location.port? ':' + location.port : ''); });
+}
 
 Start();

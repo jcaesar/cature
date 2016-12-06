@@ -1,0 +1,4 @@
+BD="$(dirname $0)"
+cd "$BD";
+phantomjs --cookies-file="$BD"/cookies.txt cature.js $@ &>/tmp/steamgifts.$$; r=$?; if [ $r -ne 0 ]; then echo Exited with code $r; cat /tmp/steamgifts.$$; fi; rm /tmp/steamgifts.$$
+#phantomjs --cookies-file="$BD"/cookies.txt cature.js $@
