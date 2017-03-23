@@ -1,4 +1,4 @@
-var url = require('system').args[2];
+var url = require('system').args.slice(-1)[0];
 Log("Running on " + url);
 
 var page = require('webpage').create();
@@ -103,6 +103,7 @@ function StuffDone() {
 			console.log("Error ocurred, received error.png instead of image");
 			return null;
 		}
+		if (!(img.complete && img.naturalWidth != 00)) return null;
 		var canvas = document.createElement("canvas");
 		canvas.width = img.width;
 		canvas.height = img.height;
@@ -110,7 +111,7 @@ function StuffDone() {
 		ctx.drawImage(img, 0, 0);      
 		return canvas.toDataURL("image/png").split(",")[1];
 	});
-	if(!img) {
+	if(!img || img.length < 100) {
 		return setTimeout(StuffDone, 500);
 	}
 	var sanitize = function(str) {
