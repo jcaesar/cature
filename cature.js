@@ -52,7 +52,7 @@ function Start() {
 		page.render("timeout.png");
 		console.log(page.evaluate(function() { return document.documentElement.innerHTML; }));
 		ErrorOut("Overall timeout!");
-	}, 15 * 60 * 1000);
+	}, 30 * 60 * 1000);
 	CS = JSON.parse(fs.read('settings'));
 	if (typeof CS.RegexEntry != 'object') 
 		CS.RegexEntry = [];
@@ -321,8 +321,10 @@ function EnterableGiveaways(known) {
 				if (!glinks || glinks.length < 1)
 					throw Error("Entry count deduction, fail 1");
 				var entmatch = glinks[0].innerHTML.match(/([0-9,]*) entries/);
-				if (!entmatch || entmatch.length != 2)
-					throw Error("Entry count deduction, fail 2");
+				if (!entmatch)
+					throw Error("entry count deduction, fail 2: " + glinks[0].innerHTML);
+				if (entmatch.length != 2)
+					throw Error("entry count deduction, fail 3: len: " + entmatch.length + " tS: " + entmatch.toString());
 				var ent = parseInt(entmatch[1].split(',').join(''));
 				var copies = 1, points = undefined;
 				Array.prototype.map.call(g.getElementsByClassName('giveaway__heading__thin'), function(h) {
@@ -337,7 +339,8 @@ function EnterableGiveaways(known) {
 					throw "Structures unexpected: Giveaway is not a giveaway - no points";
 				return { u: l.href, c: copies, p: points, e: ent };
 			} catch(e) {
-				throw("Error scraping giveaways: " + e.message);
+				console.log("Error scraping giveaways: " + e.message);
+				return undefined;
 			}
 		}).filter(function(a) { return a != undefined; });
 	})
