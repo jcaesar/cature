@@ -4,15 +4,22 @@ Log("Running on " + url);
 var page = require('webpage').create();
 var fs = require("fs");
 
+var maxglobaltimeouts = 5;
 var globaltimeout;
+var timeoutcount;
 function updateTimeout() {
 	clearTimeout(globaltimeout);
-	timeoutcounnt = 0;
-	globaltimeout = setTimeout(function() { 
-		page.render('phantom-timeout.png');
-		Log("Global timeout triggered.");
-		console.log(page.evaluate(function() { return document.documentElement.innerHTML; }));
-		phantom.exit(-1);
+	timeoutcount = 0;
+	globaltimeout = setTimeout(function() {
+		timeoutcount++;
+		page.render('phantom-timeout-' + timeoutcount + '.png');
+		Log("Global timeout triggered: " + timeoutcount + '/' + maxglobaltimeouts);
+		if (timeoutcount >= maxglobaltimeouts) {
+			console.log(page.evaluate(function() { return document.documentElement.innerHTML; }));
+			phantom.exit(-1);
+		} else {
+			PageHit('timeout');
+		}
 	}, 60*1000);
 }
 updateTimeout();
@@ -62,31 +69,26 @@ function Log(msg) {
 
 var retry;
 var rtto;
+var PageHit = function(status) {};
 function Open(uri, action) {
-    retry = 3;
+    retry = 15;
 	clearTimeout(rtto);
     var tryl;
     tryl = function(w) {
         rtto = setTimeout(function() {
-            page.open(uri, function(status) {
+			PageHit = function(status) {
                 retry--;
                 if (status !== 'success') {
-                    Log('Unable to load url: ' + page.reason_url + ' - ' + page.reason + ' Retrys left: ' + retry);
+                    Log('Unable to load url: ' + status + ' - ' + page.reason_url + ' - ' + page.reason + ' Retrys left: ' + retry);
                     if(retry > 0)
-                        tryl(5678);
+                        tryl(w*2);
                     else {
                         Log("Giving up.");
 						phantom.exit(-2);
 					}
-                } /*else {
-                    try {
-						Log('load finished');
-                        //action(status);
-                    } catch(err) {
-                        PrintStackTrace(err.message);
-                    }
-                }*/
-            });
+                }
+            }
+            page.open(uri, PageHit);
         }, w);
     }
     tryl(1500);
