@@ -304,7 +304,7 @@ function IsSteamGifts() {
 function IsSteamGiftsLoggedIn() {
 	if(!IsSteamGifts())
 		return false;	
-	var v = FMTag('a', 'href', 'logout$');
+	var v = FMTag('a', 'href', 'account$');
 	return !!v.length;
 }
 
